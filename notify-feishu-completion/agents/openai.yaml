@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notify Feishu Completion"
+  short_description: "Send Codex completion notices to Feishu"
+  default_prompt: "Use $notify-feishu-completion after finishing a change to send the required Feishu completion notice."

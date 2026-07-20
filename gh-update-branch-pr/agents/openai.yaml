@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Branch PR"
+  short_description: "Update the current branch PR from its diff"
+  default_prompt: "Use $gh-update-branch-pr to update the current branch PR title and body."

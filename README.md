@@ -12,4 +12,5 @@
 
 | 技能 | 类型 | 说明 | 入口 |
 | --- | --- | --- | --- |
+| `gh-update-branch-pr` | GitHub 工作流 | 根据当前分支的实际变更和仓库 PR 模板更新已有 PR 的标题与正文，并处理 issue 关联。 | [`SKILL.md`](./gh-update-branch-pr/SKILL.md) |
 | `notify-feishu-completion` | 通知自动化 | 在 Codex 工作完成后，通过飞书应用机器人发送完成通知。 | [`SKILL.md`](./notify-feishu-completion/SKILL.md) |

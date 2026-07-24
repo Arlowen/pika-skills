@@ -6,6 +6,7 @@ import com.pika.idea.mcp.tools.IdeaMoveChangesToChangelistTool
 import com.pika.idea.mcp.tools.IdeaStartServiceTool
 import com.pika.idea.mcp.tools.IdeaStopServiceTool
 import kotlinx.serialization.ExperimentalSerializationApi
+import org.jetbrains.ide.mcp.NoArgs
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -34,6 +35,16 @@ class ToolRegistrationTest {
         )
         assertEquals(tools.size, tools.map { it.name }.distinct().size)
         assertTrue(tools.all { it.description.isNotBlank() })
+    }
+
+    @Test
+    fun `no argument tools use MCP server NoArgs for schema compatibility`() {
+        val tools = listOf(
+            IdeaListServicesTool(),
+            IdeaListChangelistsTool(),
+        )
+
+        assertTrue(tools.all { it.argKlass == NoArgs::class })
     }
 
     @Test

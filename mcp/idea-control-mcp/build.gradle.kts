@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.pika.idea"
-version = "0.1.0"
+version = "0.1.5"
 
 val defaultIdeaPath = "/Applications/IntelliJ IDEA.app"
 val defaultMcpPluginPath =
@@ -53,7 +53,7 @@ intellijPlatform {
     instrumentCode = true
 
     pluginConfiguration {
-        name = "Run and Changelist Control MCP"
+        name = "Pika MCP"
         version = project.version.toString()
 
         ideaVersion {

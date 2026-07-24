@@ -21,7 +21,7 @@
 
 | MCP | 目标环境 | 说明 | 入口 |
 | --- | --- | --- | --- |
-| `idea-control-mcp` | IntelliJ IDEA 2024.2 + JetBrains MCP Server 1.0.30 | `Run and Changelist Control MCP`：精确控制 Run/Debug execution，并操作 IDEA Changelist。 | [`README.md`](./mcp/idea-control-mcp/README.md) |
+| `idea-control-mcp` | IntelliJ IDEA 2024.2 + JetBrains MCP Server 1.0.30 | `Pika MCP`：精确控制 Run/Debug execution，并操作 IDEA Changelist。 | [`README.md`](./mcp/idea-control-mcp/README.md) |
 
 ## 目录
 

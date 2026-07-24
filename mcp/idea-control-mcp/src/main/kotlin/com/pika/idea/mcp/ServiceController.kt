@@ -1,6 +1,7 @@
 package com.pika.idea.mcp
 
 import com.intellij.execution.Executor
+import com.intellij.execution.ProgramRunnerUtil
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.executors.DefaultDebugExecutor
@@ -20,6 +21,7 @@ import com.pika.idea.mcp.model.StartServiceResult
 import com.pika.idea.mcp.model.StopServiceArgs
 import com.pika.idea.mcp.model.StopServiceResult
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -90,50 +92,71 @@ internal class ServiceController {
 
         val executor = executor(args.mode)
         settings.checkSettings(executor)
-        val runner = runnerFor(executor, settings)
-            ?: throw IllegalArgumentException(
+        if (runnerFor(executor, settings) == null) {
+            throw IllegalArgumentException(
                 "Run configuration '$configName' does not support ${executorMode(executor)} mode",
             )
-
-        val started = CompletableFuture<RunContentDescriptor>()
-        val callback = object : ProgramRunner.Callback {
-            override fun processStarted(descriptor: RunContentDescriptor) {
-                started.complete(descriptor)
-            }
-
-            override fun processNotStarted(error: Throwable?) {
-                started.completeExceptionally(
-                    error ?: IllegalStateException("IDEA did not start '$configName'"),
-                )
-            }
         }
 
+        val started = CompletableFuture<RunContentDescriptor?>()
+        val callback = StartCallback(configName, started)
+        val startDeadlineNanos =
+            System.nanoTime() + TimeUnit.SECONDS.toNanos(args.startTimeoutSeconds.toLong())
+
         val environment = ToolSupport.onEdt {
-            val built = ExecutionEnvironmentBuilder.create(executor, settings).build(callback)
+            val built = ExecutionEnvironmentBuilder.create(executor, settings).build()
             if (built.executionId == 0L) {
                 built.assignNewExecutionId()
             }
             registry.register(built)
-            runner.execute(built)
+            // Use the same execution pipeline as IDEA's Run/Debug actions so target checks,
+            // before-run tasks, and delegated Gradle execution are not bypassed.
+            ProgramRunnerUtil.executeConfigurationAsync(
+                built,
+                false,
+                false,
+                callback,
+            )
             built
         }
 
         return try {
             val descriptor = started.get(args.startTimeoutSeconds.toLong(), TimeUnit.SECONDS)
-            StartServiceResult(
-                state = "RUNNING",
-                execution = DescriptorMapping(
+            val mapping = descriptor?.let {
+                DescriptorMapping(
                     descriptor = descriptor,
                     settings = settings,
                     mode = executorMode(executor),
-                ).toExecutionInfo(),
+                )
+            } ?: waitForActiveDescriptor(
+                project = project,
+                runManager = runManager,
+                registry = registry,
+                settings = settings,
+                deadlineNanos = startDeadlineNanos,
             )
+
+            if (mapping != null) {
+                StartServiceResult(
+                    state = "RUNNING",
+                    execution = mapping.toExecutionInfo(),
+                )
+            } else {
+                StartServiceResult(
+                    state = "STARTING",
+                    execution = environment.toExecutionInfo(settings),
+                    message = "IDEA delegated the start without returning a process descriptor; " +
+                        "poll idea_list_services to confirm the resulting execution",
+                )
+            }
         } catch (_: TimeoutException) {
             StartServiceResult(
                 state = "STARTING",
                 execution = environment.toExecutionInfo(settings),
                 message = "IDEA accepted the start request but no process descriptor appeared before the timeout",
             )
+        } catch (failure: ExecutionException) {
+            throw failure.cause ?: failure
         }
     }
 
@@ -193,6 +216,33 @@ internal class ServiceController {
     private fun activeDescriptors(project: Project): List<RunContentDescriptor> =
         allDescriptors(project)
             .filterNot { it.processHandler?.isProcessTerminated == true }
+
+    private fun waitForActiveDescriptor(
+        project: Project,
+        runManager: RunManager,
+        registry: ExecutionRegistry,
+        settings: RunnerAndConfigurationSettings,
+        deadlineNanos: Long,
+    ): DescriptorMapping? {
+        while (true) {
+            val mapping = activeDescriptors(project)
+                .asSequence()
+                .map { descriptor -> descriptorMapping(descriptor, runManager, registry) }
+                .firstOrNull { it.settings?.uniqueID == settings.uniqueID }
+            if (mapping != null) {
+                return mapping
+            }
+
+            val remainingNanos = deadlineNanos - System.nanoTime()
+            if (remainingNanos <= 0L) {
+                return null
+            }
+            val sleepMillis = TimeUnit.NANOSECONDS
+                .toMillis(remainingNanos)
+                .coerceIn(1L, 100L)
+            Thread.sleep(sleepMillis)
+        }
+    }
 
     private fun allDescriptors(project: Project): List<RunContentDescriptor> =
         ToolSupport.onEdt {
@@ -280,4 +330,19 @@ internal class ServiceController {
         val settings: RunnerAndConfigurationSettings?,
         val mode: String,
     )
+}
+
+internal class StartCallback(
+    private val configName: String,
+    private val started: CompletableFuture<RunContentDescriptor?>,
+) : ProgramRunner.Callback {
+    override fun processStarted(descriptor: RunContentDescriptor?) {
+        started.complete(descriptor)
+    }
+
+    override fun processNotStarted(error: Throwable?) {
+        started.completeExceptionally(
+            error ?: IllegalStateException("IDEA did not start '$configName'"),
+        )
+    }
 }

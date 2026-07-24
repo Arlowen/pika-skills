@@ -6,17 +6,16 @@ import com.pika.idea.mcp.ServiceController
 import com.pika.idea.mcp.ToolSupport
 import com.pika.idea.mcp.model.MoveChangesArgs
 import com.pika.idea.mcp.model.MoveChangesArgsSerializer
-import com.pika.idea.mcp.model.NoArgs
-import com.pika.idea.mcp.model.NoArgsSerializer
 import com.pika.idea.mcp.model.StartServiceArgs
 import com.pika.idea.mcp.model.StartServiceArgsSerializer
 import com.pika.idea.mcp.model.StopServiceArgs
 import com.pika.idea.mcp.model.StopServiceArgsSerializer
+import org.jetbrains.ide.mcp.NoArgs
 import org.jetbrains.ide.mcp.Response
 import org.jetbrains.mcpserverplugin.AbstractMcpTool
 
 class IdeaListServicesTool :
-    AbstractMcpTool<NoArgs>(NoArgsSerializer) {
+    AbstractMcpTool<NoArgs>(NoArgs.serializer()) {
     override val name: String = "idea_list_services"
 
     override val description: String =
@@ -55,7 +54,7 @@ class IdeaStopServiceTool :
 }
 
 class IdeaListChangelistsTool :
-    AbstractMcpTool<NoArgs>(NoArgsSerializer) {
+    AbstractMcpTool<NoArgs>(NoArgs.serializer()) {
     override val name: String = "idea_list_changelists"
 
     override val description: String =

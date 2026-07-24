@@ -11,56 +11,59 @@ import java.util.concurrent.ConcurrentHashMap
 internal class ExecutionRegistry(project: Project) {
     private val records = ConcurrentHashMap<Long, ExecutionRecord>()
 
+    internal val executionListener: ExecutionListener =
+        object : ExecutionListener {
+            override fun processStartScheduled(
+                executorId: String,
+                environment: ExecutionEnvironment,
+            ) {
+                register(environment)
+            }
+
+            override fun processStarting(
+                executorId: String,
+                environment: ExecutionEnvironment,
+            ) {
+                register(environment)
+            }
+
+            override fun processStarted(
+                executorId: String,
+                environment: ExecutionEnvironment,
+                handler: com.intellij.execution.process.ProcessHandler,
+            ) {
+                register(environment)
+            }
+
+            override fun processNotStarted(
+                executorId: String,
+                environment: ExecutionEnvironment,
+            ) {
+                records.remove(environment.executionId)
+            }
+
+            override fun processNotStarted(
+                executorId: String,
+                environment: ExecutionEnvironment,
+                cause: Throwable?,
+            ) {
+                records.remove(environment.executionId)
+            }
+
+            override fun processTerminated(
+                executorId: String,
+                environment: ExecutionEnvironment,
+                handler: com.intellij.execution.process.ProcessHandler,
+                exitCode: Int,
+            ) {
+                records.remove(environment.executionId)
+            }
+        }
+
     init {
         project.messageBus.connect(project).subscribe(
             ExecutionManager.EXECUTION_TOPIC,
-            object : ExecutionListener {
-                override fun processStartScheduled(
-                    executorId: String,
-                    environment: ExecutionEnvironment,
-                ) {
-                    register(environment)
-                }
-
-                override fun processStarting(
-                    executorId: String,
-                    environment: ExecutionEnvironment,
-                ) {
-                    register(environment)
-                }
-
-                override fun processStarted(
-                    executorId: String,
-                    environment: ExecutionEnvironment,
-                    handler: com.intellij.execution.process.ProcessHandler,
-                ) {
-                    register(environment)
-                }
-
-                override fun processNotStarted(
-                    executorId: String,
-                    environment: ExecutionEnvironment,
-                ) {
-                    records.remove(environment.executionId)
-                }
-
-                override fun processNotStarted(
-                    executorId: String,
-                    environment: ExecutionEnvironment,
-                    cause: Throwable,
-                ) {
-                    records.remove(environment.executionId)
-                }
-
-                override fun processTerminated(
-                    executorId: String,
-                    environment: ExecutionEnvironment,
-                    handler: com.intellij.execution.process.ProcessHandler,
-                    exitCode: Int,
-                ) {
-                    records.remove(environment.executionId)
-                }
-            },
+            executionListener,
         )
     }
 

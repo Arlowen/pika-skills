@@ -1,6 +1,6 @@
-# Run and Changelist Control MCP
+# Pika MCP
 
-`Run and Changelist Control MCP` is a lightweight IDEA extension for JetBrains MCP Server 1.0.30. It targets
+`Pika MCP` is a lightweight IDEA extension for JetBrains MCP Server 1.0.30. It targets
 IntelliJ IDEA 2024.2 and adds deterministic service control and changelist operations without
 requiring an IDEA upgrade.
 

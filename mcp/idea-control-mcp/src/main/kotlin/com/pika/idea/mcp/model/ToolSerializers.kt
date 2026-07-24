@@ -14,27 +14,6 @@ import kotlinx.serialization.encoding.encodeStructure
 
 // IDEA 2024.2 repackages kotlinx.serialization without the metadata required by the compiler
 // plugin. Explicit serializers keep our argument schemas compatible with MCP Server 1.0.30.
-object NoArgsSerializer : KSerializer<NoArgs> {
-    override val descriptor: SerialDescriptor =
-        buildClassSerialDescriptor("com.pika.idea.mcp.model.NoArgs")
-
-    override fun deserialize(decoder: Decoder): NoArgs {
-        decoder.decodeStructure(descriptor) {
-            while (true) {
-                when (val index = decodeElementIndex(descriptor)) {
-                    CompositeDecoder.DECODE_DONE -> break
-                    else -> error("Unexpected argument index $index")
-                }
-            }
-        }
-        return NoArgs
-    }
-
-    override fun serialize(encoder: Encoder, value: NoArgs) {
-        encoder.encodeStructure(descriptor) {}
-    }
-}
-
 object StartServiceArgsSerializer : KSerializer<StartServiceArgs> {
     override val descriptor: SerialDescriptor =
         buildClassSerialDescriptor("com.pika.idea.mcp.model.StartServiceArgs") {

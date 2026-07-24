@@ -1,7 +1,5 @@
 package com.pika.idea.mcp.model
 
-data object NoArgs
-
 data class StartServiceArgs(
     val configName: String,
     val mode: String = "DEBUG",

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Manage IDEA Workflows"
-  short_description: "Control IDEA services and organize changelists"
-  default_prompt: "Use $manage-idea-workflows to start or stop IDEA services and group current changes into logical changelists."

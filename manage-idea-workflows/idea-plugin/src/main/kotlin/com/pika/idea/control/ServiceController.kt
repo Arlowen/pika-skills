@@ -1,0 +1,348 @@
+package com.pika.idea.control
+
+import com.intellij.execution.Executor
+import com.intellij.execution.ProgramRunnerUtil
+import com.intellij.execution.RunManager
+import com.intellij.execution.RunnerAndConfigurationSettings
+import com.intellij.execution.executors.DefaultDebugExecutor
+import com.intellij.execution.executors.DefaultRunExecutor
+import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.execution.runners.ExecutionEnvironmentBuilder
+import com.intellij.execution.runners.ProgramRunner
+import com.intellij.execution.ui.RunContentDescriptor
+import com.intellij.execution.ui.RunContentManager
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.wm.ToolWindowId
+import com.pika.idea.control.model.ConfigurationInfo
+import com.pika.idea.control.model.ExecutionInfo
+import com.pika.idea.control.model.ServicesResult
+import com.pika.idea.control.model.StartServiceArgs
+import com.pika.idea.control.model.StartServiceResult
+import com.pika.idea.control.model.StopServiceArgs
+import com.pika.idea.control.model.StopServiceResult
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
+internal class ServiceController {
+    fun list(project: Project): ServicesResult {
+        ensureProject(project)
+        val runManager = RunManager.getInstance(project)
+        val registry = registry(project)
+        val executions = activeDescriptors(project)
+            .map { descriptor -> descriptorMapping(descriptor, runManager, registry) }
+            .map { it.toExecutionInfo() }
+            .sortedBy { it.executionId }
+
+        val runningByConfig = executions
+            .filter { it.configurationId != null }
+            .groupBy { it.configurationId }
+            .mapValues { (_, values) -> values.map { it.executionId }.sorted() }
+
+        val runExecutor = DefaultRunExecutor.getRunExecutorInstance()
+        val debugExecutor = DefaultDebugExecutor.getDebugExecutorInstance()
+        val configurations = runManager.allSettings
+            .filterNot { it.isTemplate }
+            .map { settings ->
+                ConfigurationInfo(
+                    name = settings.name,
+                    uniqueId = settings.uniqueID,
+                    typeId = settings.type.id,
+                    typeName = settings.type.displayName,
+                    temporary = settings.isTemporary,
+                    supportsRun = runnerFor(runExecutor, settings) != null,
+                    supportsDebug = runnerFor(debugExecutor, settings) != null,
+                    runningExecutionIds = runningByConfig[settings.uniqueID].orEmpty(),
+                )
+            }
+            .sortedWith(compareBy(ConfigurationInfo::name, ConfigurationInfo::uniqueId))
+
+        return ServicesResult(configurations, executions)
+    }
+
+    fun start(project: Project, args: StartServiceArgs): StartServiceResult {
+        ensureProject(project)
+        val configName = args.configName.trim()
+        require(configName.isNotEmpty()) { "configName must not be blank" }
+        require(args.startTimeoutSeconds in 1..120) {
+            "startTimeoutSeconds must be between 1 and 120"
+        }
+
+        val runManager = RunManager.getInstance(project)
+        val matches = runManager.allSettings.filter { it.name == configName && !it.isTemplate }
+        require(matches.isNotEmpty()) { "Run configuration '$configName' was not found" }
+        require(matches.size == 1) {
+            "Run configuration name '$configName' is ambiguous; ${matches.size} configurations use it"
+        }
+        val settings = matches.single()
+        val registry = registry(project)
+        val current = activeDescriptors(project)
+            .map { descriptor -> descriptorMapping(descriptor, runManager, registry) }
+            .filter { it.settings?.uniqueID == settings.uniqueID }
+
+        if (!args.allowMultiple && current.isNotEmpty()) {
+            val mapping = current.minBy { it.descriptor.executionId }
+            return StartServiceResult(
+                state = "ALREADY_RUNNING",
+                execution = mapping.toExecutionInfo(),
+                message = "Set allowMultiple=true only when another instance is intentional",
+            )
+        }
+
+        val executor = executor(args.mode)
+        settings.checkSettings(executor)
+        if (runnerFor(executor, settings) == null) {
+            throw IllegalArgumentException(
+                "Run configuration '$configName' does not support ${executorMode(executor)} mode",
+            )
+        }
+
+        val started = CompletableFuture<RunContentDescriptor?>()
+        val callback = StartCallback(configName, started)
+        val startDeadlineNanos =
+            System.nanoTime() + TimeUnit.SECONDS.toNanos(args.startTimeoutSeconds.toLong())
+
+        val environment = ControlSupport.onEdt {
+            val built = ExecutionEnvironmentBuilder.create(executor, settings).build()
+            if (built.executionId == 0L) {
+                built.assignNewExecutionId()
+            }
+            registry.register(built)
+            // Use the same execution pipeline as IDEA's Run/Debug actions so target checks,
+            // before-run tasks, and delegated Gradle execution are not bypassed.
+            ProgramRunnerUtil.executeConfigurationAsync(
+                built,
+                false,
+                false,
+                callback,
+            )
+            built
+        }
+
+        return try {
+            val descriptor = started.get(args.startTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            val mapping = descriptor?.let {
+                DescriptorMapping(
+                    descriptor = descriptor,
+                    settings = settings,
+                    mode = executorMode(executor),
+                )
+            } ?: waitForActiveDescriptor(
+                project = project,
+                runManager = runManager,
+                registry = registry,
+                settings = settings,
+                deadlineNanos = startDeadlineNanos,
+            )
+
+            if (mapping != null) {
+                StartServiceResult(
+                    state = "RUNNING",
+                    execution = mapping.toExecutionInfo(),
+                )
+            } else {
+                StartServiceResult(
+                    state = "STARTING",
+                    execution = environment.toExecutionInfo(settings),
+                    message = "IDEA delegated the start without returning a process descriptor; " +
+                        "refresh the services list to confirm the resulting execution",
+                )
+            }
+        } catch (_: TimeoutException) {
+            StartServiceResult(
+                state = "STARTING",
+                execution = environment.toExecutionInfo(settings),
+                message = "IDEA accepted the start request but no process descriptor appeared before the timeout",
+            )
+        } catch (failure: ExecutionException) {
+            throw failure.cause ?: failure
+        }
+    }
+
+    fun stop(project: Project, args: StopServiceArgs): StopServiceResult {
+        ensureProject(project)
+        require(args.executionId > 0) { "executionId must be positive" }
+        require(args.stopTimeoutSeconds in 1..120) {
+            "stopTimeoutSeconds must be between 1 and 120"
+        }
+
+        val descriptor = allDescriptors(project)
+            .firstOrNull { it.executionId == args.executionId }
+            ?: throw IllegalArgumentException(
+                "Execution ${args.executionId} is not running in the current project",
+            )
+        val handler = descriptor.processHandler
+            ?: return StopServiceResult("NO_PROCESS", args.executionId)
+
+        if (handler.isProcessTerminated) {
+            return StopServiceResult("TERMINATED", args.executionId, handler.exitCode)
+        }
+
+        if (!handler.isProcessTerminating) {
+            ControlSupport.onEdt {
+                handler.destroyProcess()
+            }
+        }
+
+        if (!args.waitForTermination) {
+            return StopServiceResult("STOPPING", args.executionId, handler.exitCode)
+        }
+
+        val stopped = handler.waitFor(TimeUnit.SECONDS.toMillis(args.stopTimeoutSeconds.toLong()))
+        return StopServiceResult(
+            state = if (stopped) "TERMINATED" else "STOPPING",
+            executionId = args.executionId,
+            exitCode = handler.exitCode,
+        )
+    }
+
+    private fun descriptorMapping(
+        descriptor: RunContentDescriptor,
+        runManager: RunManager,
+        registry: ExecutionRegistry,
+    ): DescriptorMapping {
+        val record = registry.find(descriptor.executionId)
+        val settings = record?.configurationId?.let { configurationId ->
+            runManager.allSettings.singleOrNull { it.uniqueID == configurationId }
+        } ?: settingsForDisplayName(runManager, descriptor.displayName)
+        return DescriptorMapping(
+            descriptor = descriptor,
+            settings = settings,
+            mode = record?.mode ?: descriptorMode(descriptor),
+        )
+    }
+
+    private fun activeDescriptors(project: Project): List<RunContentDescriptor> =
+        allDescriptors(project)
+            .filterNot { it.processHandler?.isProcessTerminated == true }
+
+    private fun waitForActiveDescriptor(
+        project: Project,
+        runManager: RunManager,
+        registry: ExecutionRegistry,
+        settings: RunnerAndConfigurationSettings,
+        deadlineNanos: Long,
+    ): DescriptorMapping? {
+        while (true) {
+            val mapping = activeDescriptors(project)
+                .asSequence()
+                .map { descriptor -> descriptorMapping(descriptor, runManager, registry) }
+                .firstOrNull { it.settings?.uniqueID == settings.uniqueID }
+            if (mapping != null) {
+                return mapping
+            }
+
+            val remainingNanos = deadlineNanos - System.nanoTime()
+            if (remainingNanos <= 0L) {
+                return null
+            }
+            val sleepMillis = TimeUnit.NANOSECONDS
+                .toMillis(remainingNanos)
+                .coerceIn(1L, 100L)
+            Thread.sleep(sleepMillis)
+        }
+    }
+
+    private fun allDescriptors(project: Project): List<RunContentDescriptor> =
+        ControlSupport.onEdt {
+            RunContentManager.getInstance(project).allDescriptors.toList()
+        }
+
+    private fun settingsForDisplayName(
+        runManager: RunManager,
+        displayName: String,
+    ): RunnerAndConfigurationSettings? {
+        val exact = runManager.allSettings.filter { it.name == displayName }
+        if (exact.size == 1) {
+            return exact.single()
+        }
+        val numberedBase = displayName.replace(Regex("""\s+(?:\(\d+\)|\[\d+])$"""), "")
+        return runManager.allSettings.filter { it.name == numberedBase }.singleOrNull()
+    }
+
+    private fun runnerFor(
+        executor: Executor,
+        settings: RunnerAndConfigurationSettings,
+    ): ProgramRunner<*>? = ProgramRunner.getRunner(executor.id, settings.configuration)
+
+    private fun executor(mode: String): Executor =
+        when (mode.trim().uppercase()) {
+            "RUN" -> DefaultRunExecutor.getRunExecutorInstance()
+            "DEBUG" -> DefaultDebugExecutor.getDebugExecutorInstance()
+            else -> throw IllegalArgumentException("mode must be RUN or DEBUG")
+        }
+
+    private fun executorMode(executor: Executor): String =
+        when (executor.id) {
+            DefaultDebugExecutor.EXECUTOR_ID -> "DEBUG"
+            DefaultRunExecutor.EXECUTOR_ID -> "RUN"
+            else -> executor.id
+        }
+
+    private fun descriptorMode(descriptor: RunContentDescriptor): String =
+        when (descriptor.contentToolWindowId) {
+            ToolWindowId.DEBUG -> "DEBUG"
+            ToolWindowId.RUN -> "RUN"
+            else -> "UNKNOWN"
+        }
+
+    private fun DescriptorMapping.toExecutionInfo(): ExecutionInfo {
+        val handler = descriptor.processHandler
+        val state = when {
+            handler == null -> "STARTING"
+            handler.isProcessTerminated -> "TERMINATED"
+            handler.isProcessTerminating -> "STOPPING"
+            else -> "RUNNING"
+        }
+        return ExecutionInfo(
+            executionId = descriptor.executionId,
+            configurationName = settings?.name ?: descriptor.displayName,
+            configurationId = settings?.uniqueID,
+            displayName = descriptor.displayName,
+            mode = mode,
+            state = state,
+            exitCode = handler?.exitCode,
+        )
+    }
+
+    private fun ExecutionEnvironment.toExecutionInfo(
+        settings: RunnerAndConfigurationSettings,
+    ): ExecutionInfo =
+        ExecutionInfo(
+            executionId = executionId,
+            configurationName = settings.name,
+            configurationId = settings.uniqueID,
+            displayName = settings.name,
+            mode = executorMode(executor),
+            state = "STARTING",
+        )
+
+    private fun ensureProject(project: Project) {
+        check(!project.isDisposed) { "The current IDEA project is already disposed" }
+    }
+
+    private fun registry(project: Project): ExecutionRegistry =
+        project.getService(ExecutionRegistry::class.java)
+
+    private data class DescriptorMapping(
+        val descriptor: RunContentDescriptor,
+        val settings: RunnerAndConfigurationSettings?,
+        val mode: String,
+    )
+}
+
+internal class StartCallback(
+    private val configName: String,
+    private val started: CompletableFuture<RunContentDescriptor?>,
+) : ProgramRunner.Callback {
+    override fun processStarted(descriptor: RunContentDescriptor?) {
+        started.complete(descriptor)
+    }
+
+    override fun processNotStarted(error: Throwable?) {
+        started.completeExceptionally(
+            error ?: IllegalStateException("IDEA did not start '$configName'"),
+        )
+    }
+}

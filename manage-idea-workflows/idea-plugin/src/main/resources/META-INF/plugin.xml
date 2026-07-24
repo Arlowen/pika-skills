@@ -1,0 +1,19 @@
+<idea-plugin>
+  <id>com.pika.ideaControlMcp</id>
+  <name>Pika Control</name>
+  <vendor>Pika</vendor>
+
+  <description><![CDATA[
+    Exposes deterministic Run/Debug service control and IDE changelist operations through a
+    loopback-only local REST API for automation skills.
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.vcs</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <applicationService serviceImplementation="com.pika.idea.control.PikaIdeaServerService"/>
+    <projectService serviceImplementation="com.pika.idea.control.ExecutionRegistry"/>
+    <postStartupActivity implementation="com.pika.idea.control.ExecutionRegistryStartupActivity"/>
+  </extensions>
+</idea-plugin>

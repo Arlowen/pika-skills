@@ -1,0 +1,135 @@
+name: Release Pika Control
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Test, build, and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Test bundled skill helper
+        run: |
+          python -m unittest discover \
+            -s manage-idea-workflows/tests \
+            -p "test_*.py" \
+            -v
+          python manage-idea-workflows/scripts/pika_idea.py --help
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        working-directory: manage-idea-workflows/idea-plugin
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must use the stable SemVer form vX.Y.Z"
+            exit 1
+          fi
+
+          tag_version="${GITHUB_REF_NAME#v}"
+          plugin_version="$(
+            sed -nE 's/^version = "([^"]+)"$/\1/p' build.gradle.kts
+          )"
+
+          if [[ -z "$plugin_version" ]]; then
+            echo "::error::Unable to read the plugin version from build.gradle.kts"
+            exit 1
+          fi
+
+          if [[ "$tag_version" != "$plugin_version" ]]; then
+            echo "::error::Tag version $tag_version does not match Gradle version $plugin_version"
+            exit 1
+          fi
+
+          echo "version=$plugin_version" >> "$GITHUB_OUTPUT"
+
+      - name: Test against IDEA 2025.3
+        working-directory: manage-idea-workflows/idea-plugin
+        run: |
+          ./gradlew clean test \
+            -PtargetIdeaVersion=2025.3.2 \
+            --no-daemon \
+            --stacktrace
+
+      - name: Build and verify the release package
+        working-directory: manage-idea-workflows/idea-plugin
+        run: |
+          ./gradlew clean test buildPlugin \
+            verifyPluginStructure \
+            verifyPluginProjectConfiguration \
+            verifyPlugin \
+            -PtargetIdeaVersion=2024.2 \
+            --no-daemon \
+            --stacktrace
+
+      - name: Prepare release assets
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        working-directory: manage-idea-workflows/idea-plugin
+        run: |
+          set -euo pipefail
+
+          artifact="build/distributions/Pika-IDEA-Control-${RELEASE_VERSION}.zip"
+          if [[ ! -f "$artifact" ]]; then
+            echo "::error::Expected release artifact was not produced: $artifact"
+            exit 1
+          fi
+
+          (
+            cd "$(dirname "$artifact")"
+            sha256sum "$(basename "$artifact")" > "$(basename "$artifact").sha256"
+          )
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        working-directory: manage-idea-workflows/idea-plugin
+        run: |
+          set -euo pipefail
+
+          artifact="build/distributions/Pika-IDEA-Control-${RELEASE_VERSION}.zip"
+          checksum="${artifact}.sha256"
+
+          gh release create "$GITHUB_REF_NAME" \
+            "$artifact#Pika Control ${RELEASE_VERSION}" \
+            "$checksum#SHA-256 checksum" \
+            --verify-tag \
+            --generate-notes \
+            --title "Pika Control ${RELEASE_VERSION}" \
+            --latest

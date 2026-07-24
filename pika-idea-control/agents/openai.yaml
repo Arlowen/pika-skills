@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pika IDEA Control"
+  short_description: "Control IDEA through the required Pika Control plugin"
+  default_prompt: "Use $pika-idea-control to verify Pika Control, then control IDEA services or organize changelists."

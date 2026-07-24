@@ -1,6 +1,6 @@
 # Pika Control
 
-此目录是 `manage-idea-workflows` Skill 配套的 IntelliJ IDEA 插件工程。插件在
+此目录是 `pika-idea-control` Skill 配套的 IntelliJ IDEA 插件工程。插件在
 IDEA 进程内调用 Run/Debug 与 Changelist API，并只在 `127.0.0.1` 暴露本地
 REST 接口；上一级 Skill 通过标准库 Python 脚本调用该接口。
 
@@ -26,7 +26,7 @@ REST 接口；上一级 Skill 通过标准库 Python 脚本调用该接口。
 ## 与 Skill 的关系
 
 ```text
-manage-idea-workflows/
+pika-idea-control/
   ├─ SKILL.md
   ├─ scripts/pika_idea.py
   └─ idea-plugin/

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pika Control"
-  short_description: "Control IDEA services and organize changelists"
-  default_prompt: "Use $manage-idea-workflows to control IDEA services or organize tracked changes into changelists."

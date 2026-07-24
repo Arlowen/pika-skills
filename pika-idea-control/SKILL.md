@@ -1,9 +1,13 @@
 ---
-name: manage-idea-workflows
-description: Control IntelliJ IDEA Run/Debug services and organize tracked changes into logical IDEA changelists through the local Pika Control plugin and its bundled Python helper. Use when the user asks Codex to list, start, stop, or restart IDEA services; needs exact multi-instance process control; asks to split tracked changes into IDEA changelists; or wants to list, move, or delete changelists without committing or pushing.
+name: pika-idea-control
+description: Control IntelliJ IDEA Run/Debug services and organize tracked changes into logical IDEA changelists through the local Pika Control plugin and its bundled Python helper. Requires the Pika Control IDEA plugin to be installed, enabled, and running before any operation. Use when the user asks Codex to list, start, stop, or restart IDEA services; needs exact multi-instance process control; asks to split tracked changes into IDEA changelists; or wants to list, move, or delete changelists without committing or pushing.
 ---
 
-# Manage IDEA Workflows
+# Pika IDEA Control
+
+This Skill is not a standalone IDEA integration. Require the separately installed `Pika Control`
+IDEA plugin before using any workflow. `pika-idea-control` is the Codex Skill; `Pika Control`
+is its IDEA-side dependency.
 
 Use the bundled `scripts/pika_idea.py` helper for deterministic IDEA operations. Resolve its
 absolute path relative to this `SKILL.md`; do not assume the current working directory is the
@@ -15,12 +19,31 @@ states, or endpoint behavior are needed.
 For installation or upgrade instructions, follow
 [references/installation.md](references/installation.md).
 
+## Install the required IDEA plugin
+
+Before the first invocation:
+
+1. Obtain `Pika-IDEA-Control-<version>.zip`:
+   - Download it from [GitHub Releases](https://github.com/Arlowen/pika-skills/releases) when a
+     release asset is available.
+   - Otherwise, use JDK 21 to run `./gradlew buildPlugin` in `<skill-dir>/idea-plugin`; take the
+     ZIP from `build/distributions/`.
+2. Open `Settings/Preferences | Plugins` in IntelliJ IDEA.
+3. Choose `Install Plugin from Disk`, select the ZIP without extracting it, and enable
+   `Pika Control`.
+4. Restart IDEA.
+5. Run `python3 <skill-dir>/scripts/pika_idea.py health` and require a successful response.
+
+Use [references/installation.md](references/installation.md) for full installation,
+configuration, and troubleshooting details.
+
 ## Preconditions
 
 1. Do not operate or restart the IDEA UI unless the user explicitly asks.
 2. Run `python3 <skill-dir>/scripts/pika_idea.py health`.
-3. If health fails, report the connection error and ask the user to enable `Pika Control`.
-   Do not fall back to UI automation.
+3. If health fails, stop before running any other Skill command. Report the connection error,
+   explain that the required `Pika Control` IDEA plugin may be missing, disabled, or not running,
+   and provide the installation steps above. Do not fall back to UI automation.
 4. Run `projects`; pass `--project <absolute-path>` to every project-scoped command when multiple
    IDEA projects are open.
 5. Treat “group commits” as IDEA Changelist grouping unless the user explicitly requests Git

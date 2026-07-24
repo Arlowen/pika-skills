@@ -31,10 +31,10 @@ jobs:
       - name: Test bundled skill helper
         run: |
           python -m unittest discover \
-            -s manage-idea-workflows/tests \
+            -s pika-idea-control/tests \
             -p "test_*.py" \
             -v
-          python manage-idea-workflows/scripts/pika_idea.py --help
+          python pika-idea-control/scripts/pika_idea.py --help
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -50,7 +50,7 @@ jobs:
       - name: Validate release version
         id: version
         shell: bash
-        working-directory: manage-idea-workflows/idea-plugin
+        working-directory: pika-idea-control/idea-plugin
         run: |
           set -euo pipefail
 
@@ -77,7 +77,7 @@ jobs:
           echo "version=$plugin_version" >> "$GITHUB_OUTPUT"
 
       - name: Test against IDEA 2025.3
-        working-directory: manage-idea-workflows/idea-plugin
+        working-directory: pika-idea-control/idea-plugin
         run: |
           ./gradlew clean test \
             -PtargetIdeaVersion=2025.3.2 \
@@ -85,7 +85,7 @@ jobs:
             --stacktrace
 
       - name: Build and verify the release package
-        working-directory: manage-idea-workflows/idea-plugin
+        working-directory: pika-idea-control/idea-plugin
         run: |
           ./gradlew clean test buildPlugin \
             verifyPluginStructure \
@@ -99,7 +99,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         shell: bash
-        working-directory: manage-idea-workflows/idea-plugin
+        working-directory: pika-idea-control/idea-plugin
         run: |
           set -euo pipefail
 
@@ -119,7 +119,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         shell: bash
-        working-directory: manage-idea-workflows/idea-plugin
+        working-directory: pika-idea-control/idea-plugin
         run: |
           set -euo pipefail
 

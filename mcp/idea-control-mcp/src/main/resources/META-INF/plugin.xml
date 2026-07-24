@@ -4,24 +4,16 @@
   <vendor>Pika</vendor>
 
   <description><![CDATA[
-    Adds deterministic Run/Debug service control and IDE changelist operations to the
-    JetBrains MCP Server plugin.
+    Exposes deterministic Run/Debug service control and IDE changelist operations through an
+    independent local Model Context Protocol server.
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.vcs</depends>
-  <depends>com.intellij.mcpServer</depends>
 
   <extensions defaultExtensionNs="com.intellij">
+    <applicationService serviceImplementation="com.pika.idea.mcp.PikaMcpServerService"/>
     <projectService serviceImplementation="com.pika.idea.mcp.ExecutionRegistry"/>
     <postStartupActivity implementation="com.pika.idea.mcp.ExecutionRegistryStartupActivity"/>
-  </extensions>
-
-  <extensions defaultExtensionNs="com.intellij.mcpServer">
-    <mcpTool implementation="com.pika.idea.mcp.tools.IdeaListServicesTool"/>
-    <mcpTool implementation="com.pika.idea.mcp.tools.IdeaStartServiceTool"/>
-    <mcpTool implementation="com.pika.idea.mcp.tools.IdeaStopServiceTool"/>
-    <mcpTool implementation="com.pika.idea.mcp.tools.IdeaListChangelistsTool"/>
-    <mcpTool implementation="com.pika.idea.mcp.tools.IdeaMoveChangesToChangelistTool"/>
   </extensions>
 </idea-plugin>

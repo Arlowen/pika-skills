@@ -2,15 +2,20 @@ package com.pika.idea.mcp
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
-import org.jetbrains.ide.mcp.Response
 
 internal object ToolSupport {
     private val gson: Gson = GsonBuilder().disableHtmlEscaping().create()
 
-    fun success(value: Any): Response = Response(status = gson.toJson(value))
+    fun json(value: Any): String = gson.toJson(value)
 
-    fun failure(message: String): Response = Response(error = message)
+    fun jsonElement(value: Any): JsonElement = gson.toJsonTree(value)
+
+    fun jsonObject(value: Any): JsonObject =
+        jsonElement(value).takeIf { it.isJsonObject }?.asJsonObject
+            ?: error("Expected an object result but got ${value::class.simpleName}")
 
     fun messageOf(error: Throwable): String =
         when (error) {

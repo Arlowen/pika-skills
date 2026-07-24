@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -7,13 +8,11 @@ plugins {
 }
 
 group = "com.pika.idea"
-version = "0.1.5"
+version = "0.1.7"
 
 val defaultIdeaPath = "/Applications/IntelliJ IDEA.app"
-val defaultMcpPluginPath =
-    "${System.getProperty("user.home")}/Library/Application Support/JetBrains/IntelliJIdea2024.2/plugins/mcp-server-plugin"
 val ideaPath = providers.gradleProperty("ideaPath").orElse(defaultIdeaPath)
-val mcpPluginPath = providers.gradleProperty("mcpPluginPath").orElse(defaultMcpPluginPath)
+val targetIdeaVersion = providers.gradleProperty("targetIdeaVersion").orNull
 
 repositories {
     mavenCentral()
@@ -24,8 +23,11 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        local(ideaPath)
-        localPlugin(mcpPluginPath)
+        if (targetIdeaVersion == null) {
+            local(ideaPath)
+        } else {
+            intellijIdea(targetIdeaVersion)
+        }
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 
@@ -51,6 +53,7 @@ kotlin {
 intellijPlatform {
     buildSearchableOptions = false
     instrumentCode = true
+    projectName = "Pika-MCP"
 
     pluginConfiguration {
         name = "Pika MCP"
@@ -58,13 +61,14 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = "242"
-            untilBuild = "242.*"
+            untilBuild = "253.*"
         }
     }
 
     pluginVerification {
         ides {
             local(ideaPath)
+            create(IntelliJPlatformType.IntellijIdeaUltimate, "2025.3.2")
         }
     }
 }
@@ -72,5 +76,6 @@ intellijPlatform {
 tasks {
     test {
         useJUnitPlatform()
+        systemProperty("pika.mcp.port", "0")
     }
 }

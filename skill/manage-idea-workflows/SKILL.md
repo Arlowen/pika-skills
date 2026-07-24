@@ -14,8 +14,8 @@ tool arguments or response states are not already known.
 ## Preconditions
 
 1. Confirm the active IDEA project is the intended project.
-2. Require the `Pika MCP` plugin and JetBrains `MCP Server` plugin to be
-   enabled.
+2. Require the independent `Pika MCP` plugin to be enabled and its configured local endpoint to
+   be reachable. JetBrains `MCP Server` is not required.
 3. Use the five `idea_*` tools. Do not replace unavailable tools with coordinate-based IDEA UI
    automation unless the user explicitly accepts that fallback.
 4. Never create a Git commit or push merely because the user asked for “commit grouping.” Treat

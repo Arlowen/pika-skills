@@ -4,11 +4,20 @@
 
 | Tool | Arguments | Important result fields |
 | --- | --- | --- |
-| `idea_list_services` | none | `configurations`, `executions` |
-| `idea_start_service` | `configName`, `mode`, `allowMultiple`, `startTimeoutSeconds` | `state`, `execution` |
-| `idea_stop_service` | `executionId`, `waitForTermination`, `stopTimeoutSeconds` | `state`, `exitCode` |
-| `idea_list_changelists` | none | `changelists`, `unversionedPaths` |
-| `idea_move_changes_to_changelist` | `changelistName`, `paths`, `createIfMissing`, `allOrNothing` | `movedPaths`, `unmatchedPaths`, `created` |
+| `idea_list_services` | `projectPath?` | `configurations`, `executions` |
+| `idea_start_service` | `projectPath?`, `configName`, `mode`, `allowMultiple`, `startTimeoutSeconds` | `state`, `execution` |
+| `idea_stop_service` | `projectPath?`, `executionId`, `waitForTermination`, `stopTimeoutSeconds` | `state`, `exitCode` |
+| `idea_list_changelists` | `projectPath?` | `changelists`, `unversionedPaths` |
+| `idea_move_changes_to_changelist` | `projectPath?`, `changelistName`, `paths`, `createIfMissing`, `allOrNothing` | `movedPaths`, `unmatchedPaths`, `created` |
+
+Pika MCP runs independently at `http://127.0.0.1:8765/mcp` by default. Register it with Codex:
+
+```bash
+codex mcp add pika --url http://127.0.0.1:8765/mcp
+```
+
+`projectPath` can be omitted when exactly one IDEA project is open. If several projects are open,
+pass the exact project directory to every call.
 
 ## Service calls
 
@@ -16,6 +25,7 @@ Start in Debug mode:
 
 ```json
 {
+  "projectPath": "/absolute/path/to/project",
   "configName": "Console",
   "mode": "DEBUG",
   "allowMultiple": false,
@@ -27,6 +37,7 @@ Stop one exact execution:
 
 ```json
 {
+  "projectPath": "/absolute/path/to/project",
   "executionId": 42,
   "waitForTermination": true,
   "stopTimeoutSeconds": 30
@@ -51,6 +62,7 @@ Move tracked paths atomically:
 
 ```json
 {
+  "projectPath": "/absolute/path/to/project",
   "changelistName": "Backend API",
   "paths": [
     "server/src/main/kotlin/example/Controller.kt",
